@@ -1,0 +1,657 @@
+LIST P=16F887
+#include "p16f887.inc"
+__CONFIG _CONFIG1, _XT_OSC & _WDTE_OFF & _MCLRE_ON & _LVP_OFF
+
+		NUM_TEST	EQU 0X20
+		UNIDAD		EQU 0X21
+		DECENA		EQU 0X22
+		CENTENA		EQU 0X23
+		NUM_TEST_TEMP	EQU 0X24
+		NUM_TEST_TEMP_2	EQU 0X25
+		DELAY1		EQU 0X26
+		DELAY2		EQU 0X27
+		DELAY3		EQU 0X28
+		CANT_LED	EQU 0X29
+		NUM_TO_LEDS	EQU 0X30
+		DELAY4		EQU 0X31
+		DELAY5		EQU 0X32
+		DELAY6		EQU 0X33
+		DELAY7		EQU 0X34
+		DELAY8		EQU 0X35
+		DELAY9		EQU 0X36
+		DELAY10		EQU 0X37
+		CONTROL		EQU 0X38
+		W_TEMP		EQU 0X39
+		STATUS_TEMP	EQU 0X40
+		CONT		EQU 0X41
+		BUZZER		EQU 0X42
+	
+	
+;	#define	FLAG_PARPADEO	CONTROL,1  ; Bit 1 de CONTROL
+;	#define	FLAG_ADC        CONTROL,2  ; Bit 2 de CONTROL
+;	#define	FLAG_TESTEO     CONTROL,3  ; Bit 3 de CONTROL
+;	#define	FLAG_SERIE      CONTROL,4  ; Bit 4 de CONTROL
+
+	
+	
+		ORG	0X00
+		GOTO    INICIO
+		ORG	0X04
+		GOTO    ISR
+INICIO		ORG	0X05
+		
+		
+
+;*******************************************************************************		
+;Configuraciones
+		
+		;Configuracion de puertos
+		
+		;RA0 entrada analogica, RA1, y RB digital y puerto E como digital
+		BANKSEL ANSEL
+		MOVLW	B'00000001'
+		MOVWF	ANSEL
+		MOVLW	B'00000000'
+		MOVWF	ANSELH
+		
+		;Habilitacion las weak pull-up
+		BANKSEL	OPTION_REG
+		BCF	OPTION_REG,7
+		
+		;Puerto D , E , C, RA1 y RA4 como salidas y puerto B
+		BANKSEL TRISD
+		MOVLW	B'00000000'
+		MOVWF	TRISD
+		MOVWF	TRISE
+		MOVWF	TRISC
+		MOVLW	B'00011000'
+		MOVWF	TRISB
+		BCF	TRISA,RA1
+		BCF	TRISA,RA4
+		
+		;Entrada RA0 analogica
+		BSF	TRISA,RA0
+		
+		;Limpieza de puertos
+		BANKSEL PORTC
+		MOVLW	B'00000000'
+		MOVWF	PORTC
+		MOVLW	B'01111111'
+		MOVWF	PORTD
+		MOVWF	PORTE
+		MOVLW	b'00011000'
+		MOVWF	PORTB
+		
+		;Configuracion del ADC
+		
+		;Vref y aliniacion
+		BANKSEL	ADCON1
+		MOVLW	B'00000000'
+		MOVWF	ADCON1
+		
+		;Velocidad de muestreo y AN0 como canal de adquisicion
+		BANKSEL ADCON0
+		BCF	ADCON0,ADCS1
+		BSF	ADCON0,ADCS0
+		BCF	ADCON0,CHS3
+		BCF	ADCON0,CHS2
+		BCF	ADCON0,CHS1
+		BCF	ADCON0,CHS0
+		
+		;Configuracion de interrupciones del ADC y puerto B
+		BANKSEL INTCON
+		MOVLW	B'11001000'
+		MOVWF	INTCON
+	
+		BANKSEL	IOCB
+		MOVLW	B'00011000'
+		MOVWF	IOCB
+		BANKSEL	PIE1
+		BSF	PIE1,ADIE
+		
+		BANKSEL	PORTB
+		CLRF	PORTB
+		
+		;Configuracion de EUSART
+		;CLRF	TXSTA	    ; limpia el registro de estado y control de transmisión
+		BANKSEL	TXSTA
+		BSF	TXSTA,BRGH  ; habilita Baud Rate de alta velocidad (necesario para la fórmula de SPBRG)
+		BSF	TXSTA,TXEN  ; habilita el transmisor EUSART
+		BCF	TXSTA,4  ; Modo asíncrono
+		BANKSEL	BAUDCTL
+		BCF	BAUDCTL,BRG16
+		
+		BANKSEL	SPBRG
+		MOVLW	.25
+		MOVWF	SPBRG	    ; escribe en el registro SPBRG
+		
+		BANKSEL RCSTA	    ;deshabilita la recepción continua
+		BCF	RCSTA,RX9   ; Datos de 8 bits (RX9 = 0)
+		BCF	RCSTA,CREN  ; Deshabilita la recepción continua (no estamos recibiendo en este ejemplo)
+				    
+		;Activacion del ADC
+		BANKSEL	ADCON0
+		BSF	ADCON0,ADON
+		
+		BANKSEL	ADRESH
+		CLRF	ADRESH
+		
+		;Inicio pic con programa 1
+		MOVLW	B'00000010'
+		MOVWF	CONTROL
+		
+		
+;*******************************************************************************
+		
+;*******************************************************************************		
+;Programa princital
+POLLING		
+		BTFSC   CONTROL,1
+		GOTO    LOOP_LED
+		BTFSC	CONTROL,2
+		GOTO    ADC_DISPLAY
+		BTFSC   CONTROL,3
+		GOTO    TESTEO 
+		BTFSC   CONTROL,4
+		GOTO    SERIE
+		GOTO    POLLING
+
+;Programa de parpadeo de funcionamiento
+LOOP_LED	
+		;Apago el ADC
+		BANKSEL	ADCON0
+		BCF	ADCON0,ADON
+		
+		;Apago leds y displays
+		BANKSEL	PORTC
+		CLRF	PORTC
+		MOVLW	B'1111'
+		MOVWF	PORTE
+		BCF	PORTA,RA4
+		
+		BANKSEL	PORTA
+		BSF	PORTA,RA1
+		CALL	DELAY_1S
+		
+		BCF	PORTA,RA1
+		CALL	DELAY_1S
+		
+		GOTO	POLLING
+		
+;Promama de CAD
+ADC_DISPLAY
+		CALL	DELAY_5MS
+		;Activacion del ADC
+		BANKSEL	ADCON0
+		BSF	ADCON0,ADON
+		
+		BANKSEL	ADRESH
+		CLRF	ADRESH
+		
+		BANKSEL	ADCON0
+		BSF	ADCON0,1
+LOOP		
+		BTFSS	ADCON0,1
+		GOTO	INICIO_ADC
+		CALL	DISPLAY
+		GOTO	POLLING
+INICIO_ADC
+		CALL	DELAY_5MS
+		BSF	ADCON0,1
+		GOTO 	LOOP
+		
+;Programa de testeo de funcionamiento
+TESTEO
+		;Apago el ADC
+		BANKSEL	ADCON0
+		BCF	ADCON0,ADON
+		
+		BANKSEL	PORTC
+		MOVLW	B'11111111'
+		MOVWF	PORTC
+		BSF	PORTA,RA4
+		
+		CALL	DELAY_500MS
+		BANKSEL	PORTC
+		CLRF	PORTC
+		BCF	PORTA,RA4
+		
+		CALL	DELAY_500MS
+		GOTO	POLLING
+		
+;Programa de Serie
+SERIE		NOP
+		;Activamos la transimision serie
+		BANKSEL	RCSTA
+		BSF	RCSTA,SPEN
+		
+		;Activamos el ADC
+		BANKSEL	ADCON0
+		BSF	ADCON0,ADON
+		
+		;GO al ADC
+		CALL	DELAY_5MS
+		BANKSEL	ADCON0
+		BSF	ADCON0,1
+		
+		CALL	DISPLAY
+		
+		;Envio la Centena
+		BANKSEL TXSTA
+		BTFSS	TXSTA,TRMT 
+		GOTO	$-1
+		
+		BANKSEL	PORTA
+		MOVLW	0X30
+		ADDWF	CENTENA,W
+		BANKSEL TXREG
+		MOVWF	TXREG 
+				
+		;Envio la Decena
+		BANKSEL TXSTA
+		BTFSS	TXSTA,TRMT 
+		GOTO	$-1
+		
+		BANKSEL	PORTA
+		MOVLW	0X30
+		ADDWF	DECENA,W
+		BANKSEL TXREG
+		MOVWF	TXREG 
+		
+		;Envio la Unidad
+		BANKSEL TXSTA
+		BTFSS	TXSTA,TRMT 
+		GOTO	$-1
+		
+		BANKSEL	PORTA
+		MOVLW	0X30
+		ADDWF	UNIDAD,W
+		BANKSEL TXREG
+		MOVWF	TXREG
+		
+		;Envio Salto de linea
+		BANKSEL TXSTA
+		BTFSS	TXSTA,TRMT 
+		GOTO	$-1
+		
+		MOVLW	0X0D
+		BANKSEL TXREG
+		MOVWF	TXREG
+		
+		
+		GOTO	POLLING
+;*******************************************************************************
+		
+;*******************************************************************************	
+;Tabla de anodo comun
+TABLA_ANODO_COMUN
+		ADDWF	PCL,F
+		RETLW	0XC0	;0
+		RETLW	0XF9	;1
+		RETLW	0XA4	;2
+		RETLW	0XB0	;3
+		RETLW	0X99	;4
+		RETLW	0X92	;5
+		RETLW	0X82	;6
+		RETLW	0XF8	;7
+		RETLW	0X80	;8
+		RETLW	0X98	;9	
+;*******************************************************************************
+
+;*******************************************************************************		
+;Subrutina de muestra de valores en displays
+DISPLAY		
+		;Enciendo display UNIDAD
+		BANKSEL	PORTE
+		MOVLW	B'0110'
+		MOVWF	PORTE
+
+		;Muestro UNIDAD
+		BCF	STATUS,RP0
+		BCF	STATUS,RP1
+		MOVF	UNIDAD,W
+		CALL	TABLA_ANODO_COMUN
+		BANKSEL	PORTD
+		MOVWF	PORTD
+
+		;DELAY DE 5MS
+		CALL	DELAY_5MS
+
+		;Enciendo display DECENA
+		BANKSEL	PORTE
+		MOVLW	B'0101'
+		MOVWF	PORTE
+
+		;Muestro DECENA
+		BCF	STATUS,RP0
+		BCF	STATUS,RP1
+		MOVFW	DECENA
+		CALL	TABLA_ANODO_COMUN
+		BANKSEL	PORTD
+		MOVWF	PORTD
+
+		;DELAY DE 5MS
+		CALL	DELAY_5MS
+
+		;Enciendo display CENTENA
+		BANKSEL	PORTE
+		MOVLW	B'0011'
+		MOVWF	PORTE
+
+		;Muestro CENTENA
+		BCF	STATUS,RP0
+		BCF	STATUS,RP1
+		MOVFW	CENTENA
+		CALL	TABLA_ANODO_COMUN
+		BANKSEL	PORTD
+		MOVWF	PORTD
+
+		;DELAY DE 5MS
+		CALL	DELAY_5MS
+
+		;Muestro LEDS
+		BANKSEL	PORTE
+		MOVLW	B'0111'
+		MOVWF	PORTE
+		MOVF	CANT_LED,0
+		MOVWF	PORTC
+		BTFSC	BUZZER,0
+		GOTO	ENCENDER_BUZZER
+		GOTO	APAGAR_BUZZER
+		
+ENCENDER_BUZZER	BSF	PORTA,RA4
+		CALL	DELAY_5MS
+		RETURN
+		
+APAGAR_BUZZER	BCF	PORTA,RA4
+		CALL	DELAY_5MS
+		RETURN	
+;*******************************************************************************
+	
+;*******************************************************************************
+;Subrutina de conversion de binario a decimal
+CONV_BCD	
+		BANKSEL ADRESH
+		MOVF	ADRESH,0
+		MOVWF	NUM_TEST
+		MOVWF	NUM_TO_LEDS
+		MOVLW	B'00000000'
+		MOVWF	UNIDAD
+		MOVWF	DECENA
+		MOVWF	CENTENA
+		MOVWF	PORTC
+		GOTO	TEST_CENTENA
+		
+TEST_CENTENA	
+		MOVF	NUM_TEST,0
+		MOVWF	NUM_TEST_TEMP
+		MOVLW	.100
+		SUBWF	NUM_TEST,1
+		BTFSC	STATUS,C
+		GOTO	ADD_CENTENA
+		GOTO	TEST_DECENA
+
+ADD_CENTENA	
+		INCF	CENTENA
+		MOVFW	NUM_TEST
+		MOVWF	NUM_TEST_TEMP
+		GOTO	TEST_CENTENA
+		
+TEST_DECENA	
+		MOVFW	NUM_TEST_TEMP
+		MOVWF	NUM_TEST_TEMP_2
+		MOVLW	.10
+		SUBWF	NUM_TEST_TEMP,1
+		BTFSC	STATUS,C
+		GOTO	ADD_DECENA
+		GOTO	TEST_UNIDAD
+ADD_DECENA
+		INCF	DECENA
+		MOVFW	NUM_TEST_TEMP
+		MOVWF	NUM_TEST_TEMP_2
+		GOTO	TEST_DECENA
+TEST_UNIDAD
+		MOVFW	NUM_TEST_TEMP_2
+		MOVWF	UNIDAD
+		RETURN
+;*******************************************************************************		
+	
+;*******************************************************************************
+;Subrutina de nivel de leds
+NUM_LEDS
+	
+		;Muestro la cantida de led dependiendo del valor
+		BCF	STATUS,RP0
+		BCF	STATUS,RP1
+		MOVLW	B'00000000'
+		BCF	BUZZER,0
+		MOVWF	CANT_LED
+	
+		MOVLW	.42
+		SUBWF	NUM_TO_LEDS,0
+		BTFSS	STATUS,C
+		RETURN
+		BSF	CANT_LED,0
+	
+	    	MOVLW	.84
+		SUBWF	NUM_TO_LEDS,0
+		BTFSS	STATUS,C
+		RETURN
+		BSF	CANT_LED,1
+	
+		MOVLW	.126
+		SUBWF	NUM_TO_LEDS,0
+		BTFSS	STATUS,C
+		RETURN
+		BSF	CANT_LED,2
+	
+		MOVLW	.168
+		SUBWF	NUM_TO_LEDS,0
+		BTFSS	STATUS,C
+		RETURN
+		BSF	CANT_LED,3
+
+		MOVLW	.210
+		SUBWF	NUM_TO_LEDS,0
+		BTFSS	STATUS,C
+		RETURN
+		BSF	CANT_LED,4
+
+		MOVLW	.255
+		SUBWF	NUM_TO_LEDS,0
+		BTFSS	STATUS,C
+		RETURN
+		BSF	CANT_LED,5
+		BSF	BUZZER,0
+	
+	
+		RETURN
+;*******************************************************************************	
+	
+;*******************************************************************************
+;Rutina de interrupcion
+
+ISR
+		MOVWF   W_TEMP
+		SWAPF   STATUS,W
+		MOVWF   STATUS_TEMP
+		
+		;Interrupcion del Teclado
+		BANKSEL	INTCON
+		BTFSC	INTCON,RBIF
+		GOTO	ISR_TECLADO
+				
+		;Interrupcion del ADC
+		BANKSEL	PIR1
+		BTFSC	PIR1,ADIF
+		GOTO	INTERRUP_ADC
+		
+
+ISR_TECLADO
+		MOVLW	.1
+		MOVWF	CONT
+		MOVLW	B'11111101'
+		MOVWF	PORTB
+LOOP_TECLADO	BTFSS	PORTB,RB4
+		GOTO	TEST_RUTINA
+		INCF	CONT,F
+		BTFSS	PORTB,RB3
+		GOTO	TEST_RUTINA
+		INCF	CONT,F
+		BSF	STATUS,C
+		RLF	PORTB,F
+		MOVLW	.5
+		SUBWF	CONT,W
+		BTFSS	STATUS,Z
+		GOTO	LOOP_TECLADO
+		GOTO	FIN_ISR
+		
+TEST_RUTINA
+		MOVLW	.1
+		SUBWF	CONT,F
+		BTFSC	STATUS,Z
+		GOTO	INTERRUP_RB1
+		SUBWF	CONT,F
+		BTFSC	STATUS,Z
+		GOTO	INTERRUP_RB2
+		SUBWF	CONT,F
+		BTFSC	STATUS,Z
+		GOTO	INTERRUP_RB3
+		GOTO	INTERRUP_RB4
+
+		
+INTERRUP_RB1	CALL	PRESSED
+		MOVLW	B'00000010'
+		MOVWF	CONTROL
+		
+;		BTFSS	PORTB,RB4
+;		GOTO	$-1
+		GOTO	SALIR_ISR_TECLADO
+		
+INTERRUP_RB2	CALL	PRESSED
+		MOVLW	B'00000100'
+		MOVWF	CONTROL
+		
+;		BTFSS	PORTB,RB3
+;		GOTO	$-1
+		GOTO	SALIR_ISR_TECLADO	
+		
+INTERRUP_RB3	CALL	PRESSED
+		MOVLW	B'00001000'
+		MOVWF	CONTROL
+		
+;		BTFSS	PORTB,RB4
+;		GOTO	$-1
+		GOTO	SALIR_ISR_TECLADO
+
+INTERRUP_RB4	CALL	PRESSED
+		MOVLW	B'00010000'
+		MOVWF	CONTROL
+		
+;		BTFSS	PORTB,RB3
+;		GOTO	$-1
+		GOTO	SALIR_ISR_TECLADO
+		
+PRESSED		BTFSS	PORTB,RB4
+		GOTO	PRESSED
+		BTFSS	PORTB,RB3
+		GOTO	PRESSED
+		RETURN
+
+INTERRUP_ADC
+		CALL	CONV_BCD
+		CALL	NUM_LEDS
+		GOTO	SALIR_ISR_ADC
+		
+SALIR_ISR_TECLADO
+		CLRF	PORTB
+		BCF	INTCON,RBIF
+		GOTO	FIN_ISR
+	
+SALIR_ISR_ADC
+		BANKSEL	PIR1
+	    	BCF	PIR1,ADIF
+		GOTO	FIN_ISR
+FIN_ISR		
+		BANKSEL	PORTA
+		SWAPF   STATUS_TEMP,W
+		MOVWF   STATUS
+		SWAPF   W_TEMP,F
+		SWAPF   W_TEMP,W
+		
+		RETFIE
+;*******************************************************************************	
+;	BTFSC	PORTB,RB1
+;	GOTO	INTERRUP_RB1
+;	
+;	BTFSC	PORTB,RB2
+;	GOTO	INTERRUP_RB2
+;	
+;	BTFSC	PORTB,RB3
+;	GOTO	INTERRUP_RB3
+;	
+;	BTFSC	PORTB,RB4
+;	GOTO	INTERRUP_RB4
+;		
+;INTERRUP_RB1
+;	
+;	BCF	STATUS,RP1
+;	BCF	STATUS,RP0
+;	MOVF	PORTB,0
+;	BCF	INTCON,RBIF
+;	CALL	CONV_BCD
+;	CALL	NUM_LEDS
+;	
+;	BANKSEL	PIR1
+;	BCF	PIR1,ADIF
+;	
+;	
+;	RETFIE
+;*******************************************************************************	
+	
+;*******************************************************************************	
+;Subrutinas de Delay
+DELAY_1S
+	MOVLW	D'255'
+	MOVWF	DELAY1	;M
+LOOP1	MOVLW	D'241'
+	MOVWF	DELAY2	;N
+LOOP2	MOVLW	D'1'
+	MOVWF	DELAY3	;P
+LOOP3	DECFSZ	DELAY3,F
+	GOTO	LOOP3
+	DECFSZ	DELAY2,F
+	GOTO	LOOP2
+	DECFSZ	DELAY1,F
+	GOTO	LOOP1
+	RETURN
+	
+DELAY_500MS
+	MOVLW    D'255'
+	MOVWF    DELAY4    ;M
+LOOP4   MOVLW    D'241'
+	MOVWF    DELAY5    ;N
+LOOP5   MOVLW    D'1'
+	MOVWF    DELAY6    ;P
+LOOP6   DECFSZ    DELAY6,F
+	GOTO    LOOP6
+	DECFSZ    DELAY5,F
+	GOTO    LOOP5
+	DECFSZ    DELAY4,F
+	GOTO    LOOP4
+	RETURN
+	
+DELAY_5MS	
+	MOVLW	D'6'
+	MOVWF	DELAY7	;N
+LOOP7	MOVLW	D'250'
+	MOVWF	DELAY8	;P
+LOOP8	DECFSZ	DELAY8,F
+	GOTO	LOOP8
+	DECFSZ	DELAY7,F
+	GOTO	LOOP7
+	RETURN	
+;*******************************************************************************
+	
+
+		END
