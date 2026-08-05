@@ -38,9 +38,9 @@ El firmware está organizado en distintos modos de operación:
 
 ## Estructura del proyecto
 
-- `TPI_Grupo N°14.asm`: firmware en lenguaje ensamblador para el PIC16F887.
-- `TPI_Grupo14.pdsprj`: proyecto de simulación en Proteus.
-- `TPI_GRUPO N°14.pdf`: informe del trabajo con desarrollo teórico, hardware y firmware.
+- `src/TPI_Grupo N°14.asm`: firmware en lenguaje ensamblador para el PIC16F887.
+- `src/TPI_Grupo14.pdsprj`: proyecto de simulación en Proteus.
+- `doc/TPI_GRUPO N°14.pdf`: informe del trabajo con desarrollo teórico, hardware y firmware.
 
 ## Funcionamiento general
 
